@@ -1,0 +1,30 @@
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  background-color: #d0f0f0;
+  margin: 0;
+  padding: 0;
+}
+
+h1 {
+  color: #333;
+  margin-top: 10px;
+}
+
+canvas {
+  border: 3px solid #555;
+  background-color: #fff;
+}
+
+.steering-wheel {
+  margin-top: 15px;
+}
+
+.steering-wheel button {
+  font-size: 28px;
+  padding: 12px 25px;
+  margin: 10px;
+  border-radius: 10px;
+  background-color: #ccc;
+  border: 2px solid #888;
+}
