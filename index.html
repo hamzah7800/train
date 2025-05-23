@@ -7,12 +7,18 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>Train Game</h1>
-  <canvas id="gameCanvas" width="800" height="400"></canvas>
-  <div class="steering-wheel">
-    <button id="leftBtn">⟸</button>
-    <button id="rightBtn">⟹</button>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+  <div id="controls">
+    <button id="upBtn">↑</button>
+    <div class="middle-row">
+      <button id="leftBtn">←</button>
+      <div id="steeringWheel">Steering</div>
+      <button id="rightBtn">→</button>
+    </div>
+    <button id="downBtn">↓</button>
   </div>
+
   <script src="game.js"></script>
   <script src="index.js"></script>
 </body>
