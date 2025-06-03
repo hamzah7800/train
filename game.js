@@ -1,79 +1,100 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const canvas = document.getElementById('renderCanvas');
+const engine = new BABYLON.Engine(canvas, true);
+const socket = new WebSocket('ws://localhost:3000');
 
-let train = [{ x: 100, y: 100 }];
-let direction = 'right';
-let cargo = spawnCargo();
-let score = 0;
+let scene, camera, playerMesh, joystick, trainMesh;
 
-document.addEventListener('keydown', (e) => {
-  switch (e.key) {
-    case 'ArrowUp': if (direction !== 'down') direction = 'up'; break;
-    case 'ArrowDown': if (direction !== 'up') direction = 'down'; break;
-    case 'ArrowLeft': if (direction !== 'right') direction = 'left'; break;
-    case 'ArrowRight': if (direction !== 'left') direction = 'right'; break;
-  }
-});
+function createScene() {
+  scene = new BABYLON.Scene(engine);
+  scene.clearColor = new BABYLON.Color3.Black();
 
-function gameLoop() {
-  moveTrain();
-  if (checkCollision()) return gameOver();
+  camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(0, 2, -10), scene);
+  camera.attachControl(canvas, true);
 
-  if (train[0].x === cargo.x && train[0].y === cargo.y) {
-    train.push({ ...train[train.length - 1] });
-    cargo = spawnCargo();
-    score++;
-  }
+  const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(1, 1, 0), scene);
 
-  draw();
-  setTimeout(gameLoop, 150);
+  const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 100, height: 100 }, scene);
+
+  playerMesh = BABYLON.MeshBuilder.CreateBox("player", { size: 1 }, scene);
+  playerMesh.position.y = 1;
+
+  trainMesh = BABYLON.MeshBuilder.CreateBox("train", { width: 4, height: 2, depth: 8 }, scene);
+  trainMesh.position.set(0, 1, 50);
+
+  setupJoystick();
+  setupTouchLook();
+
+  return scene;
+}
+
+function setupJoystick() {
+  joystick = new JoystickController("joystick", 64, 8);
+}
+
+function setupTouchLook() {
+  let lastX;
+  canvas.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 1) {
+      let deltaX = e.touches[0].clientX - (lastX ?? e.touches[0].clientX);
+      camera.rotation.y -= deltaX * 0.005;
+      lastX = e.touches[0].clientX;
+    }
+  });
+
+  canvas.addEventListener('touchend', () => { lastX = null; });
 }
 
 function moveTrain() {
-  const head = { ...train[0] };
-  switch (direction) {
-    case 'up': head.y -= 20; break;
-    case 'down': head.y += 20; break;
-    case 'left': head.x -= 20; break;
-    case 'right': head.x += 20; break;
+  trainMesh.position.z -= 0.3;
+  if (trainMesh.position.z < -50) {
+    trainMesh.position.z = 50;
   }
-
-  train.unshift(head);
-  train.pop();
-}
-
-function spawnCargo() {
-  return {
-    x: Math.floor(Math.random() * 40) * 20,
-    y: Math.floor(Math.random() * 30) * 20,
-  };
 }
 
 function checkCollision() {
-  const [head, ...body] = train;
-  return head.x < 0 || head.y < 0 || head.x >= canvas.width || head.y >= canvas.height ||
-    body.some(segment => segment.x === head.x && segment.y === head.y);
+  return playerMesh.intersectsMesh(trainMesh, false);
 }
 
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = 'lime';
-  train.forEach(segment => ctx.fillRect(segment.x, segment.y, 18, 18));
-
-  ctx.fillStyle = 'gold';
-  ctx.fillRect(cargo.x, cargo.y, 18, 18);
-
-  ctx.fillStyle = '#fff';
-  ctx.font = '20px Arial';
-  ctx.fillText(`Score: ${score}`, 10, 20);
+function updatePlayer() {
+  const { dx, dy } = joystick;
+  let dir = new BABYLON.Vector3(dx, 0, dy);
+  dir = BABYLON.Vector3.TransformCoordinates(dir, BABYLON.Matrix.RotationY(camera.rotation.y));
+  dir.scaleInPlace(0.1);
+  playerMesh.moveWithCollisions(dir);
 }
 
-function gameOver() {
-  ctx.fillStyle = '#f00';
-  ctx.font = '40px Arial';
-  ctx.fillText('Game Over!', canvas.width / 2 - 100, canvas.height / 2);
-  ctx.font = '20px Arial';
-  ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 60, canvas.height / 2 + 30);
+function gameLoop() {
+  updatePlayer();
+  moveTrain();
+
+  if (checkCollision()) {
+    alert("💥 You were hit by a train!");
+    location.reload();
+  }
 }
 
-gameLoop();
+scene = createScene();
+engine.runRenderLoop(() => {
+  scene.render();
+  gameLoop();
+});
+
+window.addEventListener('resize', () => engine.resize());
+
+document.getElementById("fullscreenBtn").onclick = () => {
+  if (!document.fullscreenElement) {
+    canvas.requestFullscreen();
+  }
+};
+
+// Multiplayer basic party handler
+socket.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  if (data.type === 'party') {
+    console.log(`🧑 Joined party: ${data.partyId}`);
+  }
+};
+
+socket.onopen = () => {
+  socket.send(JSON.stringify({ type: 'join', name: prompt("Enter name:") }));
+};
