@@ -12,7 +12,7 @@ body, html {
   touch-action: none;
 }
 
-#joystick {
+#joystickZone {
   position: absolute;
   bottom: 10%;
   left: 10%;
