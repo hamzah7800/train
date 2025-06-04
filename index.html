@@ -1,44 +1,19 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Steaming Steel</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: black;
-            touch-action: none;
-        }
-        #joystickZone {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            z-index: 10;
-        }
-        canvas {
-            display: block;
-        }
-        #fullscreenBtn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            padding: 8px 12px;
-            background: #444;
-            color: white;
-            border: none;
-            z-index: 10;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Train Game</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://www.gstatic.com/firebasejs/10.12.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.1/firebase-database.js"></script>
+  <script src="firebase-config.js" type="module"></script>
 </head>
 <body>
-    <button id="fullscreenBtn">Go Fullscreen</button>
-    <div id="joystickZone"></div>
-    <canvas id="gameCanvas"></canvas>
-    <script src="https://cdn.jsdelivr.net/npm/joystick-controller@1.1.1/dist/joystick-controller.min.js"></script>
-    <script src="main.js"></script>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="joystickContainer"></div>
+
+  <script src="joystick.js"></script>
+  <script src="game.js"></script>
 </body>
 </html>
