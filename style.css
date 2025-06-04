@@ -1,0 +1,10 @@
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #222;
+}
+#joystickContainer {
+  position: absolute;
+  bottom: 50px;
+  left: 50px;
+}
