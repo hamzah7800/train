@@ -73,10 +73,35 @@
       font-size: 16px;
       cursor: pointer;
     }
+    /* Joystick styling */
+    #joystickContainer {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 100px;
+      height: 100px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 50%;
+      touch-action: none;
+      user-select: none;
+    }
+    #joystick {
+      position: absolute;
+      left: 35px;
+      top: 35px;
+      width: 30px;
+      height: 30px;
+      background: rgba(255,255,255,0.7);
+      border-radius: 50%;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
+  <div id="joystickContainer">
+    <div id="joystick"></div>
+  </div>
   <div id="fireButton">Fire</div>
   <div id="reloadButton">Reload</div>
   <div id="upgradeButton">Upgrade</div>
@@ -122,6 +147,53 @@
     const shootSound = new Audio("shoot.wav");
     const reloadSound = new Audio("reload.wav");
 
+    // WASD control
+    const keys = { w: false, a: false, s: false, d: false };
+    window.addEventListener("keydown", e => {
+      if (e.key.toLowerCase() === "w") keys.w = true;
+      if (e.key.toLowerCase() === "a") keys.a = true;
+      if (e.key.toLowerCase() === "s") keys.s = true;
+      if (e.key.toLowerCase() === "d") keys.d = true;
+    });
+    window.addEventListener("keyup", e => {
+      if (e.key.toLowerCase() === "w") keys.w = false;
+      if (e.key.toLowerCase() === "a") keys.a = false;
+      if (e.key.toLowerCase() === "s") keys.s = false;
+      if (e.key.toLowerCase() === "d") keys.d = false;
+    });
+
+    // Joystick control
+    let joystickActive = false, jsStartX = 0, jsStartY = 0, jsDelta = {dx: 0, dy: 0};
+    const joystickContainer = document.getElementById("joystickContainer");
+    const joystick = document.getElementById("joystick");
+    joystickContainer.addEventListener("pointerdown", e => {
+      joystickActive = true;
+      jsStartX = e.clientX;
+      jsStartY = e.clientY;
+    });
+    joystickContainer.addEventListener("pointermove", e => {
+      if (!joystickActive) return;
+      let dx = e.clientX - jsStartX, dy = e.clientY - jsStartY;
+      const maxDist = 40;
+      let dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist > maxDist) { let scale = maxDist/dist; dx *= scale; dy *= scale; }
+      jsDelta = { dx, dy };
+      joystick.style.left = `${35 + dx}px`;
+      joystick.style.top = `${35 + dy}px`;
+    });
+    joystickContainer.addEventListener("pointerup", () => {
+      joystickActive = false;
+      jsDelta = {dx: 0, dy: 0};
+      joystick.style.left = "35px";
+      joystick.style.top = "35px";
+    });
+    joystickContainer.addEventListener("pointercancel", () => {
+      joystickActive = false;
+      jsDelta = {dx: 0, dy: 0};
+      joystick.style.left = "35px";
+      joystick.style.top = "35px";
+    });
+
     document.getElementById("fireButton").addEventListener("click", () => {
       if (train.ammo > 0 && !gamePaused) {
         bullets.push({ x: train.x + 80, y: train.y + 15, radius: 5, speed: 7 });
@@ -153,8 +225,7 @@
       if (distY > (rect.h / 2 + circle.radius)) return false;
       if (distX <= (rect.w / 2)) return true;
       if (distY <= (rect.h / 2)) return true;
-      let dx = distX - rect.w / 2;
-      let dy = distY - rect.h / 2;
+      let dx = distX - rect.w / 2, dy = distY - rect.h / 2;
       return (dx * dx + dy * dy <= (circle.radius * circle.radius));
     }
 
@@ -172,7 +243,7 @@
 
     function spawnEnemy() {
       let isBoss = false;
-      if (wave % 10 === 0 && enemies.filter(e => e.isBoss).length === 0) { 
+      if (wave % 10 === 0 && enemies.filter(e => e.isBoss).length === 0) {
         isBoss = true;
         enemies.push({ x: canvas.width, y: canvas.height / 2 - 50, w: 100, h: 100, hp: 200, speed: 1.5, isBoss: true });
       } else {
@@ -212,7 +283,8 @@
       updateUpgradeMenu();
     }
     function updateUpgradeMenu() {
-      document.getElementById("resourceStatus").innerHTML = `<p>Resources: Wood: ${resources.wood} | Metal: ${resources.metal} | Steel: ${resources.steel} | Energy: ${resources.energy}</p>`;
+      document.getElementById("resourceStatus").innerHTML =
+        `<p>Resources: Wood: ${resources.wood} | Metal: ${resources.metal} | Steel: ${resources.steel} | Energy: ${resources.energy}</p>`;
       let optionsHTML = "";
       if (train.upgradeLevel === 0) {
         optionsHTML += `<div class="upgradeOption" onclick="upgradeToPolished()">Upgrade to Polished Wood (Cost: 5 Wood, +15 HP)</div>`;
@@ -267,11 +339,10 @@
     function update() {
       if (gamePaused) { requestAnimationFrame(update); return; }
       let now = Date.now();
-      let timeCycle = (now / 1000) % 20;
-      ctx.fillStyle = timeCycle < 10 ? "#444" : "#111";
+      ctx.fillStyle = ((now / 1000) % 20) < 10 ? "#444" : "#111";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      if (now - lastWaveTime > 10000) {
+      if (now - lastWaveTime > 15000) {
         wave++;
         spawnEnemy();
         lastWaveTime = now;
@@ -280,6 +351,24 @@
       if (autoTurretInstalled && now - autoTurretLastTime > autoTurretCooldown) {
         bullets.push({ x: train.x + 80, y: train.y + 15, radius: 5, speed: 7 });
         autoTurretLastTime = now;
+      }
+
+      // WASD & Joystick movement
+      let moveX = 0, moveY = 0;
+      if (keys.w) moveY -= 1;
+      if (keys.s) moveY += 1;
+      if (keys.a) moveX -= 1;
+      if (keys.d) moveX += 1;
+      moveX += jsDelta.dx / 40;
+      moveY += jsDelta.dy / 40;
+      let mag = Math.hypot(moveX, moveY);
+      if (mag > 0) {
+        moveX /= mag;
+        moveY /= mag;
+        train.x += moveX * train.speed;
+        train.y += moveY * train.speed;
+        train.x = Math.max(0, Math.min(canvas.width - train.w, train.x));
+        train.y = Math.max(0, Math.min(canvas.height - train.h, train.y));
       }
 
       ctx.fillStyle = train.color;
@@ -353,7 +442,8 @@
         }
       }
 
-      document.getElementById("hud").innerHTML = `Wave: ${wave} | HP: ${Math.floor(train.hp)} | Ammo: ${train.ammo} | Resources - Wood: ${resources.wood}, Metal: ${resources.metal}, Steel: ${resources.steel}, Energy: ${resources.energy}`;
+      document.getElementById("hud").innerHTML =
+        `Wave: ${wave} | HP: ${Math.floor(train.hp)} | Ammo: ${train.ammo} | Resources - Wood: ${resources.wood}, Metal: ${resources.metal}, Steel: ${resources.steel}, Energy: ${resources.energy}`;
 
       if (train.hp <= 0) {
         ctx.fillStyle = "#000a";
