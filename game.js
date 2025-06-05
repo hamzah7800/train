@@ -1,214 +1,231 @@
-let paused = false;
-
-let canvas = document.getElementById('game');
-let ctx = canvas.getContext('2d');
-
-let player = {
-  x: 100,
-  y: canvas.height / 2,
-  vx: 0,
-  vy: 0,
-  speed: 2,
-  coins: 0,
-  armor: 5,
-  turretLevel: 1,
-  speedLevel: 1,
-  health: 5,
-  weapon: 'basic'
-};
-
-let enemies = [];
-let bullets = [];
-let level = 1;
-let enemiesToSpawn = 5;
-let bossSpawned = false;
-
-let passengers = [
-  { id: 1, x: 120, y: 100, alive: true },
-  { id: 2, x: 160, y: 100, alive: true }
-];
-
-let sounds = {
-  shoot: new Audio('shoot.wav'),
-  hit: new Audio('hit.wav'),
-  gameover: new Audio('gameover.wav')
-};
-
-function upgradeTurret() {
-  if (player.coins >= 5) {
-    player.turretLevel++;
-    player.coins -= 5;
-  }
-}
-function upgradeArmor() {
-  if (player.coins >= 3) {
-    player.armor += 2;
-    player.coins -= 3;
-  }
-}
-function upgradeSpeed() {
-  if (player.coins >= 4) {
-    player.speed += 0.5;
-    player.coins -= 4;
-  }
-}
-function changeWeapon() {
-  if (player.coins >= 6) {
-    player.weapon = player.weapon === 'basic' ? 'rapid' : 'basic';
-    player.coins -= 6;
-  }
-}
-
-function saveGame() {
-  const state = { player, level };
-  localStorage.setItem('trainSave', JSON.stringify(state));
-}
-function loadGame() {
-  const data = localStorage.getItem('trainSave');
-  if (data) {
-    const state = JSON.parse(data);
-    Object.assign(player, state.player);
-    level = state.level || 1;
-  }
-}
-
-function spawnEnemy() {
-  const types = ['basic', 'fast', 'tank'];
-  const type = types[Math.floor(Math.random() * types.length)];
-  let speed = 1.2, hp = 1;
-  if (type === 'fast') speed = 2.5;
-  if (type === 'tank') hp = 3;
-  enemies.push({ x: canvas.width, y: Math.random() * canvas.height, type, speed, hp });
-  enemiesToSpawn--;
-  if (enemiesToSpawn > 0) {
-    setTimeout(spawnEnemy, 2000);
-  } else if (!bossSpawned) {
-    enemies.push({ x: canvas.width, y: Math.random() * canvas.height, type: 'boss', speed: 0.8, hp: 10 });
-    bossSpawned = true;
-  }
-}
-
-function drawUI() {
-  ctx.fillStyle = 'white';
-  ctx.font = '16px sans-serif';
-  ctx.fillText('Level: ' + level, 10, canvas.height - 60);
-  ctx.fillText('Coins: ' + player.coins, 10, canvas.height - 40);
-  ctx.fillText('Health: ' + player.armor, 10, canvas.height - 20);
-}
-
-function drawEnemy(enemy) {
-  passengers.forEach(p => {
-    if (p.alive && Math.abs(enemy.x - p.x) < 15 && Math.abs(enemy.y - p.y) < 15) {
-      p.alive = false;
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Train Defense Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      touch-action: none;
     }
-  });
-  ctx.fillStyle = enemy.type === 'tank' ? 'gray' : enemy.type === 'fast' ? 'orange' : enemy.type === 'boss' ? 'purple' : 'red';
-  ctx.fillRect(enemy.x, enemy.y, 20, 20);
-  let target = player;
-  let dx = target.x - enemy.x;
-  let dy = target.y - enemy.y;
-  let len = Math.hypot(dx, dy);
-  let spd = enemy.speed || 1.2;
-  enemy.x += (dx / len) * spd;
-  enemy.y += (dy / len) * spd;
-
-  if (Math.hypot(enemy.x - player.x, enemy.y - player.y) < 25) {
-    player.health -= 0.05;
-  }
-}
-
-function drawBullet(b) {
-  ctx.fillStyle = 'yellow';
-  ctx.fillRect(b.x, b.y, 4, 2);
-  b.x += b.vx;
-}
-
-function update() {
-  if (paused) {
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'white';
-    ctx.font = '32px sans-serif';
-    ctx.fillText('Paused - Press ESC to resume', canvas.width / 2 - 150, canvas.height / 2);
-    requestAnimationFrame(update);
-    return;
-  }
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  player.x += player.vx;
-  player.y += player.vy;
-
-  ctx.fillStyle = 'blue';
-  ctx.fillRect(player.x, player.y, 30, 20);
-
-  passengers.forEach(p => {
-    if (p.alive) {
-      ctx.fillStyle = 'pink';
-      ctx.fillRect(p.x, p.y, 10, 10);
+    canvas {
+      display: block;
+      background: #228B22; /* green background */
     }
-  });
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
 
-  bullets.forEach(drawBullet);
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-  enemies.forEach(e => {
-    drawEnemy(e);
-    let hit = bullets.find(b => Math.hypot(b.x - e.x, b.y - e.y) < 10);
-    if (hit) {
-      e.hp -= 1;
-      if (e.hp <= 0) {
-        if (e.type === 'boss') {
-          level++;
-          enemiesToSpawn = 5 + level * 2;
-          bossSpawned = false;
-          setTimeout(spawnEnemy, 1000);
-        }
-        player.coins += 1;
-        enemies.splice(enemies.indexOf(e), 1);
+    let paused = false;
+
+    const player = {
+      x: 100,
+      y: canvas.height / 2,
+      vx: 0,
+      vy: 0,
+      speed: 2,
+      coins: 0,
+      armor: 5,
+      turretLevel: 1,
+      health: 5,
+    };
+
+    let bullets = [];
+    let enemies = [];
+    let bulletCount = 64;
+    let canShoot = true;
+    let level = 1;
+    let enemiesToSpawn = 5;
+    let bossSpawned = false;
+
+    const joystick = {
+      baseX: 80,
+      baseY: canvas.height - 80,
+      radius: 40,
+      stickX: 80,
+      stickY: canvas.height - 80,
+      active: false,
+    };
+
+    function shoot() {
+      if (canShoot && bulletCount > 0) {
+        bullets.push({ x: player.x + 20, y: player.y + 10, vx: 6 });
+        bulletCount--;
+        canShoot = false;
+        setTimeout(() => canShoot = true, 1000);
       }
-      bullets.splice(bullets.indexOf(hit), 1);
     }
-  });
 
-  if (player.weapon === 'rapid' && Math.random() < 0.2) {
-    bullets.push({ x: player.x, y: player.y, vx: 7 });
-    sounds.shoot.play();
-  } else if (player.weapon === 'basic' && Math.random() < 0.05 * player.turretLevel) {
-    bullets.push({ x: player.x, y: player.y, vx: 5 * player.turretLevel });
-    sounds.shoot.play();
-  }
+    function reload() {
+      bulletCount = 64;
+    }
 
-  drawUI();
+    function spawnEnemy() {
+      enemies.push({
+        x: canvas.width,
+        y: Math.random() * canvas.height,
+        hp: 2,
+        speed: 1 + Math.random(),
+      });
+      enemiesToSpawn--;
+      if (enemiesToSpawn > 0) {
+        setTimeout(spawnEnemy, 2000);
+      } else if (!bossSpawned) {
+        enemies.push({
+          x: canvas.width,
+          y: Math.random() * canvas.height,
+          hp: 10,
+          speed: 0.6,
+          boss: true
+        });
+        bossSpawned = true;
+      }
+    }
 
-  if (player.health <= 0 || passengers.every(p => !p.alive)) {
-    sounds.gameover.play();
-    ctx.fillStyle = 'red';
-    ctx.font = '48px sans-serif';
-    ctx.fillText('GAME OVER - ESC to reset', canvas.width / 2 - 200, canvas.height / 2);
-    return;
-  }
+    function update() {
+      if (paused) {
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "white";
+        ctx.font = "32px sans-serif";
+        ctx.fillText("Paused - Press ESC", canvas.width / 2 - 120, canvas.height / 2);
+        requestAnimationFrame(update);
+        return;
+      }
 
-  requestAnimationFrame(update);
-}
+      ctx.fillStyle = "#228B22"; // green background
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-canvas.addEventListener('touchstart', e => {
-  let touch = e.touches[0];
-  player.vx = touch.clientX < canvas.width / 2 ? -player.speed : player.speed;
-  player.vy = touch.clientY < canvas.height / 2 ? -player.speed : player.speed;
-});
+      player.x += player.vx;
+      player.y += player.vy;
 
-canvas.addEventListener('touchend', () => {
-  player.vx = 0;
-  player.vy = 0;
-});
+      // Draw player
+      ctx.fillStyle = "blue";
+      ctx.fillRect(player.x, player.y, 30, 20);
 
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    paused = !paused;
-  }
-});
+      // Draw bullets
+      ctx.fillStyle = "yellow";
+      bullets.forEach((b, i) => {
+        b.x += b.vx;
+        ctx.fillRect(b.x, b.y, 5, 2);
+        if (b.x > canvas.width) bullets.splice(i, 1);
+      });
 
-window.addEventListener('beforeunload', saveGame);
-loadGame();
-spawnEnemy();
-update();
+      // Draw enemies
+      enemies.forEach((e, i) => {
+        e.x -= e.speed;
+        ctx.fillStyle = e.boss ? "purple" : "red";
+        ctx.fillRect(e.x, e.y, 20, 20);
+
+        bullets.forEach((b, j) => {
+          if (Math.hypot(b.x - e.x, b.y - e.y) < 15) {
+            e.hp--;
+            bullets.splice(j, 1);
+          }
+        });
+
+        if (e.hp <= 0) {
+          player.coins += e.boss ? 5 : 1;
+          enemies.splice(i, 1);
+          if (e.boss) {
+            level++;
+            enemiesToSpawn = 5 + level * 2;
+            bossSpawned = false;
+            setTimeout(spawnEnemy, 1000);
+          }
+        }
+      });
+
+      // Draw UI
+      ctx.fillStyle = "white";
+      ctx.font = "16px sans-serif";
+      ctx.fillText("Ammo: " + bulletCount, canvas.width - 120, canvas.height - 80);
+      ctx.fillText("Coins: " + player.coins, 10, 20);
+      ctx.fillText("Health: " + player.armor, 10, 40);
+      ctx.fillText("Level: " + level, 10, 60);
+
+      // Shoot button
+      ctx.fillStyle = "red";
+      ctx.fillRect(canvas.width - 120, canvas.height - 60, 100, 30);
+      ctx.fillStyle = "white";
+      ctx.fillText("Shoot", canvas.width - 90, canvas.height - 40);
+
+      // Reload button
+      ctx.fillStyle = "blue";
+      ctx.fillRect(canvas.width - 120, canvas.height - 25, 100, 25);
+      ctx.fillStyle = "white";
+      ctx.fillText("Reload", canvas.width - 95, canvas.height - 10);
+
+      // Draw joystick
+      ctx.fillStyle = "rgba(255,255,255,0.2)";
+      ctx.beginPath();
+      ctx.arc(joystick.baseX, joystick.baseY, joystick.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.4)";
+      ctx.beginPath();
+      ctx.arc(joystick.stickX, joystick.stickY, 20, 0, Math.PI * 2);
+      ctx.fill();
+
+      requestAnimationFrame(update);
+    }
+
+    canvas.addEventListener("touchstart", (e) => {
+      for (let t of e.touches) {
+        let dx = t.clientX - joystick.baseX;
+        let dy = t.clientY - joystick.baseY;
+        let dist = Math.hypot(dx, dy);
+        if (dist < joystick.radius + 30) {
+          joystick.active = true;
+          joystick.stickX = t.clientX;
+          joystick.stickY = t.clientY;
+        }
+
+        // Shoot
+        if (t.clientX > canvas.width - 120 && t.clientY > canvas.height - 60 && t.clientY < canvas.height - 30)
+          shoot();
+        // Reload
+        if (t.clientX > canvas.width - 120 && t.clientY > canvas.height - 30)
+          reload();
+      }
+    });
+
+    canvas.addEventListener("touchmove", (e) => {
+      if (!joystick.active) return;
+      let touch = e.touches[0];
+      joystick.stickX = touch.clientX;
+      joystick.stickY = touch.clientY;
+
+      let dx = joystick.stickX - joystick.baseX;
+      let dy = joystick.stickY - joystick.baseY;
+      let dist = Math.min(Math.hypot(dx, dy), joystick.radius);
+      let angle = Math.atan2(dy, dx);
+
+      player.vx = Math.cos(angle) * (dist / joystick.radius) * player.speed;
+      player.vy = Math.sin(angle) * (dist / joystick.radius) * player.speed;
+    });
+
+    canvas.addEventListener("touchend", () => {
+      joystick.active = false;
+      joystick.stickX = joystick.baseX;
+      joystick.stickY = joystick.baseY;
+      player.vx = 0;
+      player.vy = 0;
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") paused = !paused;
+    });
+
+    spawnEnemy();
+    update();
+  </script>
+</body>
+</html>
