@@ -1,10 +1,26 @@
-body {
+body, html {
   margin: 0;
   overflow: hidden;
-  background: #222;
+  background: #111;
 }
-#joystickContainer {
+
+canvas {
+  display: block;
+}
+
+#joystickArea {
   position: absolute;
-  bottom: 50px;
-  left: 50px;
+  bottom: 20px;
+  left: 20px;
+  width: 100px;
+  height: 100px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 50%;
+}
+
+#multiplayer {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  color: white;
 }
