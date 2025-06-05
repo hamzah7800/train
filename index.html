@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Train Defense Game</title>
+  <style>
+    canvas { background: #222; display: block; margin: 0 auto; touch-action: none; }
+    #upgradeMenu { position: absolute; top: 10px; right: 10px; background: #333; padding: 10px; border-radius: 8px; }
+    #upgradeMenu button { display: block; margin: 5px 0; padding: 6px 10px; }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="800" height="480"></canvas>
+  <div id="upgradeMenu">
+    <button onclick="upgradeTurret()">Upgrade Turret (5 coins)</button>
+    <button onclick="upgradeArmor()">Upgrade Armor (3 coins)</button>
+    <button onclick="upgradeSpeed()">Upgrade Speed (4 coins)</button>
+    <button onclick="changeWeapon()">Change Weapon (6 coins)</button>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
