@@ -1,24 +1,298 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Train Defense Multiplayer</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Train Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #222;
+      font-family: sans-serif;
+      color: #fff;
+    }
+    canvas {
+      display: block;
+      background: #333;
+    }
+    #joystickContainer {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 100px;
+      height: 100px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      touch-action: none;
+      user-select: none;
+    }
+    #joystick {
+      position: absolute;
+      left: 35px;
+      top: 35px;
+      width: 30px;
+      height: 30px;
+      background: rgba(255, 255, 255, 0.7);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    #fireButton {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 80px;
+      height: 80px;
+      background: rgba(200, 0, 0, 0.8);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      user-select: none;
+    }
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      line-height: 1.5;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 8px;
+    }
+  </style>
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
-  <div id="joystickArea"></div>
-  <div id="multiplayer">
-    <button onclick="startHost()">Host Game</button>
-    <button onclick="joinGame()">Join Game</button>
-    <textarea id="signalData" placeholder="Paste signal here..."></textarea>
-    <button onclick="connectPeers()">Connect</button>
+  <div id="joystickContainer">
+    <div id="joystick"></div>
   </div>
-  <div id="upgrades">
-    <button onclick="upgradeTurret()">Upgrade Turret</button>
-    <button onclick="upgradeArmor()">Upgrade Armor</button>
+  <div id="fireButton">Fire</div>
+  <div id="hud">
+    <div id="stats"></div>
   </div>
-  <script src="simple-peer.min.js"></script>
-  <script src="game.js"></script>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const train = {
+      x: 100,
+      y: canvas.height / 2 - 25,
+      w: 100,
+      h: 50,
+      hp: 100,
+      armor: 50,
+      shield: 30,
+      inventory: [],
+      speed: 2,
+      gunOffsetX: 80,
+      gunOffsetY: 15
+    };
+
+    let bullets = [];
+    let enemies = [];
+    let wave = 1;
+    let enemySpawnInterval = 2000;
+    let lastEnemySpawn = 0;
+    let waveDuration = 10000;
+    let lastWaveTime = Date.now();
+
+    const joystickContainer = document.getElementById("joystickContainer");
+    const joystick = document.getElementById("joystick");
+    let joystickActive = false;
+    let startX, startY, currentX, currentY;
+
+    function getJoystickDelta() {
+      const dx = currentX - startX;
+      const dy = currentY - startY;
+      const maxDistance = 40;
+      let distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance > maxDistance) {
+        let scale = maxDistance / distance;
+        return { dx: dx * scale, dy: dy * scale };
+      }
+      return { dx, dy };
+    }
+
+    joystickContainer.addEventListener("pointerdown", (e) => {
+      joystickActive = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      currentX = e.clientX;
+      currentY = e.clientY;
+      joystick.style.left = "35px";
+      joystick.style.top = "35px";
+    });
+
+    joystickContainer.addEventListener("pointermove", (e) => {
+      if (!joystickActive) return;
+      currentX = e.clientX;
+      currentY = e.clientY;
+      const delta = getJoystickDelta();
+      joystick.style.left = `${35 + delta.dx}px`;
+      joystick.style.top = `${35 + delta.dy}px`;
+    });
+
+    joystickContainer.addEventListener("pointerup", () => {
+      joystickActive = false;
+      joystick.style.left = "35px";
+      joystick.style.top = "35px";
+    });
+
+    joystickContainer.addEventListener("pointercancel", () => {
+      joystickActive = false;
+      joystick.style.left = "35px";
+      joystick.style.top = "35px";
+    });
+
+    const fireButton = document.getElementById("fireButton");
+    fireButton.addEventListener("click", () => {
+      fireBullet();
+    });
+
+    function fireBullet() {
+      bullets.push({
+        x: train.x + train.gunOffsetX,
+        y: train.y + train.gunOffsetY + 10,
+        radius: 5,
+        speed: 7
+      });
+    }
+
+    function spawnEnemy() {
+      let isBoss = false;
+      if (wave % 10 === 0 && enemies.length === 0) {
+        isBoss = true;
+      }
+      if (isBoss) {
+        enemies.push({
+          x: canvas.width,
+          y: canvas.height / 2 - 50,
+          w: 100,
+          h: 100,
+          hp: 200,
+          speed: 1.5,
+          isBoss: true
+        });
+      } else {
+        const enemySize = 40;
+        enemies.push({
+          x: canvas.width,
+          y: Math.random() * (canvas.height - enemySize),
+          w: enemySize,
+          h: enemySize,
+          hp: 20 + wave * 2,
+          speed: 1 + wave * 0.1,
+          isBoss: false
+        });
+      }
+    }
+
+    function isColliding(a, b) {
+      return a.x < b.x + b.w &&
+             a.x + a.w > b.x &&
+             a.y < b.y + b.h &&
+             a.y + a.h > b.y;
+    }
+    
+    function isPointInRect(point, rect) {
+      return point.x > rect.x && point.x < rect.x + rect.w &&
+             point.y > rect.y && point.y < rect.y + rect.h;
+    }
+
+    function update() {
+      const now = Date.now();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (joystickActive) {
+        const delta = getJoystickDelta();
+        const mag = Math.sqrt(delta.dx * delta.dx + delta.dy * delta.dy);
+        if (mag > 1) {
+          train.x += (delta.dx / mag) * train.speed;
+          train.y += (delta.dy / mag) * train.speed;
+          train.x = Math.max(0, Math.min(canvas.width - train.w, train.x));
+          train.y = Math.max(0, Math.min(canvas.height - train.h, train.y));
+        }
+      }
+
+      ctx.fillStyle = "#00f";
+      ctx.fillRect(train.x, train.y, train.w, train.h);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(train.x + train.gunOffsetX, train.y + train.gunOffsetY, 20, 10);
+
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        let b = bullets[i];
+        b.x += b.speed;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#ff0";
+        ctx.fill();
+        if (b.x > canvas.width) {
+          bullets.splice(i, 1);
+          continue;
+        }
+        for (let j = enemies.length - 1; j >= 0; j--) {
+          let enemy = enemies[j];
+          if (isPointInRect({x: b.x, y: b.y}, enemy)) {
+            enemy.hp -= 20;
+            bullets.splice(i, 1);
+            if (enemy.hp <= 0) {
+              train.inventory.push("coin");
+              enemies.splice(j, 1);
+            }
+            break;
+          }
+        }
+      }
+
+      if (now - lastEnemySpawn > enemySpawnInterval && now - lastWaveTime > 500) {
+        spawnEnemy();
+        lastEnemySpawn = now;
+      }
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        let enemy = enemies[i];
+        enemy.x -= enemy.speed;
+        ctx.fillStyle = enemy.isBoss ? "#f00" : "#a00";
+        ctx.fillRect(enemy.x, enemy.y, enemy.w, enemy.h);
+        
+        if (isColliding(train, enemy)) {
+          let damage = enemy.isBoss ? 30 : 10;
+          let effectiveDamage = damage - train.armor * 0.05 - train.shield * 0.03;
+          train.hp -= Math.max(effectiveDamage, 1);
+          enemies.splice(i, 1);
+        }
+      }
+
+      if (now - lastWaveTime > waveDuration) {
+        wave++;
+        train.speed += 0.2;
+        train.hp = Math.min(train.hp + 20, 100);
+        enemySpawnInterval = Math.max(enemySpawnInterval - 100, 800);
+        lastWaveTime = now;
+      }
+
+      const statsDiv = document.getElementById("stats");
+      statsDiv.innerHTML = `
+        <strong>Wave:</strong> ${wave} <br/>
+        <strong>HP:</strong> ${Math.floor(train.hp)} <br/>
+        <strong>Armor:</strong> ${train.armor} <br/>
+        <strong>Shield:</strong> ${train.shield} <br/>
+        <strong>Inventory:</strong> ${train.inventory.join(", ") || "None"}
+      `;
+
+      requestAnimationFrame(update);
+    }
+
+    update();
+
+    window.addEventListener("resize", () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+  </script>
 </body>
 </html>
