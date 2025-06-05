@@ -1,34 +1,46 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Train Defense Game</title>
+  <title>Train Defense Co-op</title>
   <style>
-    html, body { margin: 0; padding: 0; overflow: hidden; }
-    canvas { display: block; touch-action: none; }
-    #upgradeMenu {
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      background: #228B22; /* Green background */
+    }
+    #menu {
       position: absolute;
       top: 10px;
-      right: 10px;
-      background: #333;
+      left: 10px;
+      z-index: 10;
+      background: rgba(0,0,0,0.5);
       color: white;
       padding: 10px;
-      border-radius: 8px;
+      font-family: sans-serif;
     }
-    #upgradeMenu button {
-      display: block;
-      margin: 4px 0;
-      padding: 6px 10px;
+    textarea {
+      width: 300px;
+      height: 60px;
     }
   </style>
 </head>
 <body>
-  <canvas id="game"></canvas>
-  <div id="upgradeMenu">
-    <button onclick="upgradeTurret()">Upgrade Turret (5 coins)</button>
-    <button onclick="upgradeArmor()">Upgrade Armor (3 coins)</button>
-    <button onclick="upgradeSpeed()">Upgrade Speed (4 coins)</button>
-    <button onclick="changeWeapon()">Change Weapon (6 coins)</button>
+  <div id="menu">
+    <button onclick="createGame()">Create Game</button>
+    <button onclick="joinGame()">Join Game</button><br><br>
+    <div>
+      <label>Local Code:</label><br>
+      <textarea id="local" readonly></textarea>
+    </div>
+    <div>
+      <label>Remote Code:</label><br>
+      <textarea id="remote"></textarea><br>
+      <button onclick="connect()">Connect</button>
+    </div>
   </div>
-  <script src="game.js"></script>
-</body>
-</html>
+  <canvas id="game"></canvas>
