@@ -1,61 +1,81 @@
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+let canvas = document.getElementById('gameCanvas');
+let ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-const playerId = `player_${Math.floor(Math.random() * 10000)}`;
-const db = window.firebaseDB;
-const ref = window.firebaseRef;
-const set = window.firebaseSet;
-const onValue = window.firebaseOnValue;
+let isHost = false;
+let peer;
 
-let players = {};
+// Simple player state
+let player = { x: 100, y: 100, color: 'blue' };
+let otherPlayer = { x: 200, y: 100, color: 'red' };
 
-const train = {
-  x: Math.random() * 600 + 100,
-  y: Math.random() * 400 + 100,
-  vx: 0,
-  vy: 0,
-  speed: 2
-};
+// Joystick movement
+let move = { x: 0, y: 0 };
+document.getElementById('joystickArea').addEventListener('touchmove', e => {
+  let t = e.touches[0];
+  move.x = (t.clientX - 70) * 0.1;
+  move.y = (t.clientY - canvas.height + 170) * 0.1;
+});
 
-function syncPosition() {
-  set(ref(db, `players/${playerId}`), {
-    x: train.x,
-    y: train.y
+function update() {
+  player.x += move.x;
+  player.y += move.y;
+
+  // Send our state
+  if (peer && peer.connected) {
+    peer.send(JSON.stringify(player));
+  }
+
+  draw();
+  requestAnimationFrame(update);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawPlayer(player);
+  drawPlayer(otherPlayer);
+}
+
+function drawPlayer(p) {
+  ctx.fillStyle = p.color;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Multiplayer
+function startHost() {
+  isHost = true;
+  peer = new SimplePeer({ initiator: true, trickle: false });
+
+  peer.on('signal', data => {
+    document.getElementById('signalData').value = JSON.stringify(data);
+  });
+
+  peer.on('data', d => {
+    otherPlayer = JSON.parse(d);
   });
 }
 
-onValue(ref(db, "players"), (snapshot) => {
-  players = snapshot.val() || {};
-});
+function joinGame() {
+  isHost = false;
+  peer = new SimplePeer({ initiator: false, trickle: false });
 
-function drawTrain(x, y, isSelf = false) {
-  ctx.fillStyle = isSelf ? "red" : "blue";
-  ctx.fillRect(x - 20, y - 10, 40, 20);
+  peer.on('signal', data => {
+    document.getElementById('signalData').value = JSON.stringify(data);
+  });
+
+  peer.on('data', d => {
+    otherPlayer = JSON.parse(d);
+  });
 }
 
-function update() {
-  train.x += train.vx * train.speed;
-  train.y += train.vy * train.speed;
-  syncPosition();
-}
-
-function render() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (const id in players) {
-    const p = players[id];
-    drawTrain(p.x, p.y, id === playerId);
+function connectPeers() {
+  let input = document.getElementById('signalData').value;
+  if (input && peer) {
+    peer.signal(JSON.parse(input));
   }
 }
 
-function gameLoop() {
-  update();
-  render();
-  requestAnimationFrame(gameLoop);
-}
-
-new VirtualJoystick(document.getElementById("joystickContainer"), (dir) => {
-  train.vx = dir.x;
-  train.vy = dir.y;
-});
-
-gameLoop();
+update();
