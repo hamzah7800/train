@@ -1,113 +1,462 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Train Co‑op Multiplayer</title>
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<style>/* ... your existing CSS ... */
-#mpUI {position:absolute;top:10px;right:10px;background:#000a;color:#fff;padding:10px;border-radius:6px;font-family:sans-serif;}
-#mpUI input, #mpUI button {display:block;width:100%;margin:6px 0;}</style>
+<head>
+  <meta charset="UTF-8">
+  <title>Train Survival Game</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #222;
+      font-family: sans-serif;
+      color: #fff;
+    }
+    canvas {
+      display: block;
+      background: #111;
+    }
+    #fireButton, #reloadButton, #upgradeButton {
+      position: absolute;
+      bottom: 20px;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      user-select: none;
+    }
+    #fireButton { right: 20px; background: rgba(200, 0, 0, 0.8); }
+    #reloadButton { right: 120px; background: rgba(0, 200, 0, 0.8); }
+    #upgradeButton { right: 220px; background: rgba(0, 0, 200, 0.8); }
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    #upgradeMenu {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      z-index: 1000;
+      text-align: center;
+      padding-top: 50px;
+    }
+    #upgradeMenu h2 { margin-top: 0; }
+    .upgradeOption {
+      margin: 10px;
+      padding: 10px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid #fff;
+      cursor: pointer;
+    }
+    .upgradeOption:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    #doneButton {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: green;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    /* Joystick styling */
+    #joystickContainer {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 100px;
+      height: 100px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 50%;
+      touch-action: none;
+      user-select: none;
+    }
+    #joystick {
+      position: absolute;
+      left: 35px;
+      top: 35px;
+      width: 30px;
+      height: 30px;
+      background: rgba(255,255,255,0.7);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+  </style>
 </head>
 <body>
-<canvas id="gameCanvas"></canvas>
-<!-- existing UI: joystick, buttons, HUD, etc. -->
-<div id="mpUI">
-  <button id="btnHost">Create Game</button>
-  <button id="btnJoin">Join Game</button>
-  <div id="hostPanel" style="display:none">
-    <p>Code to share:</p><input id="roomCode" readonly>
-    <p>Paste answer from player 2:</p><textarea id="answerInput"></textarea>
-    <button id="btnAccept">Connect</button>
+  <canvas id="gameCanvas"></canvas>
+  <div id="joystickContainer">
+    <div id="joystick"></div>
   </div>
-  <div id="joinPanel" style="display:none">
-    <p>Enter room code:</p><input id="joinCode">
-    <button id="btnLookup">Lookup</button>
-    <p>Your answer:</p><textarea id="myAnswer" readonly></textarea>
+  <div id="fireButton">Fire</div>
+  <div id="reloadButton">Reload</div>
+  <div id="upgradeButton">Upgrade</div>
+  <div id="hud"></div>
+  <div id="upgradeMenu">
+    <h2>Upgrade Menu</h2>
+    <div id="resourceStatus"></div>
+    <div id="upgradeOptions"></div>
+    <button id="doneButton">Done</button>
   </div>
-</div>
+  <script>
+    const canvas = document.getElementById("gameCanvas"),
+          ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-<script src="https://cdn.jsdelivr.net/npm/simple-peer@9/simplepeer.min.js"></script>
-<script>
-const peerOptions = { initiator: false, trickle: false };
-let peer, isHost = false;
-let hostOffer = null;
+    let gamePaused = false;
+    let upgradeMenuOpen = false;
+    let resources = { wood: 0, metal: 0, steel: 0, energy: 0 };
 
-// Simple in-browser map: roomCode -> offer
-const roomOffers = {};
+    let train = {
+      x: 100,
+      y: canvas.height / 2 - 25,
+      w: 100,
+      h: 50,
+      hp: 100,
+      ammo: 64,
+      speed: 2,
+      color: "#8B4513",
+      upgradeLevel: 0
+    };
 
-function toCode(json) {
-  const hash = btoa(json).replace(/[+/=]/g, '').slice(0,5);
-  return hash.toUpperCase();
-}
-function encode(obj) { return JSON.stringify(obj); }
-function decode(str) { try { return JSON.parse(str); } catch { return null; } }
+    let autoTurretInstalled = false;
+    let autoTurretLastTime = Date.now();
+    const autoTurretCooldown = 1000;
 
-// Host flow
-document.getElementById("btnHost").onclick = () => {
-  peer = new SimplePeer({ initiator: true, trickle: false });
-  peer.on('signal', data => {
-    const offerStr = encode(data);
-    const code = toCode(offerStr);
-    hostOffer = offerStr;
-    roomOffers[code] = offerStr;
-    document.getElementById("roomCode").value = code;
-    document.getElementById("hostPanel").style.display = 'block';
-  });
-  peer.on('connect', onConnect);
-};
+    let bullets = [];
+    let enemies = [];
+    let loot = [];
+    let wave = 1;
+    let lastWaveTime = Date.now();
 
-// Join flow
-document.getElementById("btnJoin").onclick = () => {
-  document.getElementById("joinPanel").style.display = 'block';
-};
-document.getElementById("btnLookup").onclick = () => {
-  const code = document.getElementById("joinCode").value.trim().toUpperCase();
-  const offerStr = roomOffers[code];
-  if (!offerStr) return alert("Invalid code");
-  const offer = decode(offerStr);
-  peer = new SimplePeer(peerOptions);
-  peer.on('signal', ans => {
-    document.getElementById("myAnswer").value = encode(ans);
-  });
-  peer.on('connect', onConnect);
-  peer.signal(offer);
-};
+    const shootSound = new Audio("shoot.wav");
+    const reloadSound = new Audio("reload.wav");
 
-// Host receives answer
-document.getElementById("btnAccept").onclick = () => {
-  const ans = decode(document.getElementById("answerInput").value);
-  if (!ans) return alert("Invalid JSON");
-  peer.signal(ans);
-};
+    // WASD control
+    const keys = { w: false, a: false, s: false, d: false };
+    window.addEventListener("keydown", e => {
+      if (e.key.toLowerCase() === "w") keys.w = true;
+      if (e.key.toLowerCase() === "a") keys.a = true;
+      if (e.key.toLowerCase() === "s") keys.s = true;
+      if (e.key.toLowerCase() === "d") keys.d = true;
+    });
+    window.addEventListener("keyup", e => {
+      if (e.key.toLowerCase() === "w") keys.w = false;
+      if (e.key.toLowerCase() === "a") keys.a = false;
+      if (e.key.toLowerCase() === "s") keys.s = false;
+      if (e.key.toLowerCase() === "d") keys.d = false;
+    });
 
-// Once connected
-function onConnect() {
-  console.log("Connected!");
-  isHost = !!hostOffer;
-  // initialize game state and start game loop here...
-  startGame();
-}
+    // Joystick control
+    let joystickActive = false, jsStartX = 0, jsStartY = 0, jsDelta = {dx: 0, dy: 0};
+    const joystickContainer = document.getElementById("joystickContainer");
+    const joystick = document.getElementById("joystick");
+    joystickContainer.addEventListener("pointerdown", e => {
+      joystickActive = true;
+      jsStartX = e.clientX;
+      jsStartY = e.clientY;
+    });
+    joystickContainer.addEventListener("pointermove", e => {
+      if (!joystickActive) return;
+      let dx = e.clientX - jsStartX, dy = e.clientY - jsStartY;
+      const maxDist = 40;
+      let dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist > maxDist) { let scale = maxDist/dist; dx *= scale; dy *= scale; }
+      jsDelta = { dx, dy };
+      joystick.style.left = `${35 + dx}px`;
+      joystick.style.top = `${35 + dy}px`;
+    });
+    joystickContainer.addEventListener("pointerup", () => {
+      joystickActive = false;
+      jsDelta = {dx: 0, dy: 0};
+      joystick.style.left = "35px";
+      joystick.style.top = "35px";
+    });
+    joystickContainer.addEventListener("pointercancel", () => {
+      joystickActive = false;
+      jsDelta = {dx: 0, dy: 0};
+      joystick.style.left = "35px";
+      joystick.style.top = "35px";
+    });
 
-// message sync example
-peer.on('data', d => {
-  const msg = JSON.parse(d);
-  if (msg.type === 'state') {
-    // host sends full game state
-    if (!isHost) applyState(msg.data);
-  }
-});
+    document.getElementById("fireButton").addEventListener("click", () => {
+      if (train.ammo > 0 && !gamePaused) {
+        bullets.push({ x: train.x + 80, y: train.y + 15, radius: 5, speed: 7 });
+        train.ammo--;
+        shootSound.play();
+      }
+    });
 
-function sendState(state) {
-  if (peer && peer.connected) {
-    peer.send(JSON.stringify({ type:'state', data:state }));
-  }
-}
+    document.getElementById("reloadButton").addEventListener("click", () => {
+      if (!gamePaused && !train.isReloading) {
+        train.isReloading = true;
+        setTimeout(() => { train.ammo = 64; train.isReloading = false; reloadSound.play(); }, 200);
+      }
+    });
 
-// In your game loop (if host):
-if (isHost && peer.connected) sendState({
-  wave, enemies, bullets, trainState:train
-});
+    document.getElementById("upgradeButton").addEventListener("click", () => {
+      openUpgradeMenu();
+    });
 
-// In your game loop, apply peer movement inputs accordingly...
+    window.addEventListener("resize", () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
 
-</script>
+    function isCollidingRectCircle(rect, circle) {
+      let distX = Math.abs(circle.x - rect.x - rect.w / 2);
+      let distY = Math.abs(circle.y - rect.y - rect.h / 2);
+      if (distX > (rect.w / 2 + circle.radius)) return false;
+      if (distY > (rect.h / 2 + circle.radius)) return false;
+      if (distX <= (rect.w / 2)) return true;
+      if (distY <= (rect.h / 2)) return true;
+      let dx = distX - rect.w / 2, dy = distY - rect.h / 2;
+      return (dx * dx + dy * dy <= (circle.radius * circle.radius));
+    }
+
+    function isCollidingRect(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x &&
+             a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function drawHealthBar(x, y, w, h, percent, color) {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w * percent, h);
+    }
+
+    function spawnEnemy() {
+      let isBoss = false;
+      if (wave % 10 === 0 && enemies.filter(e => e.isBoss).length === 0) {
+        isBoss = true;
+        enemies.push({ x: canvas.width, y: canvas.height / 2 - 50, w: 100, h: 100, hp: 200, speed: 1.5, isBoss: true });
+      } else {
+        const enemySize = 40;
+        enemies.push({
+          x: canvas.width,
+          y: Math.random() * (canvas.height - enemySize),
+          w: enemySize,
+          h: enemySize,
+          hp: 30 + wave * 2,
+          speed: 1 + wave * 0.1,
+          isBoss: false
+        });
+      }
+    }
+
+    function dropLoot(x, y, isBoss) {
+      loot.push({ type: "wood", x: x, y: y, spawnTime: Date.now() });
+      loot.push({ type: "metal", x: x + 10, y: y, spawnTime: Date.now() });
+      if (isBoss) {
+        loot.push({ type: "steel", x: x + 20, y: y, spawnTime: Date.now() });
+        loot.push({ type: "energy", x: x + 30, y: y, spawnTime: Date.now() });
+      } else {
+        if (Math.random() < 0.12) {
+          loot.push({ type: "steel", x: x + 20, y: y, spawnTime: Date.now() });
+        }
+        if (Math.random() < 0.12) {
+          loot.push({ type: "energy", x: x + 30, y: y, spawnTime: Date.now() });
+        }
+      }
+    }
+
+    function openUpgradeMenu() {
+      gamePaused = true;
+      upgradeMenuOpen = true;
+      document.getElementById("upgradeMenu").style.display = "block";
+      updateUpgradeMenu();
+    }
+    function updateUpgradeMenu() {
+      document.getElementById("resourceStatus").innerHTML =
+        `<p>Resources: Wood: ${resources.wood} | Metal: ${resources.metal} | Steel: ${resources.steel} | Energy: ${resources.energy}</p>`;
+      let optionsHTML = "";
+      if (train.upgradeLevel === 0) {
+        optionsHTML += `<div class="upgradeOption" onclick="upgradeToPolished()">Upgrade to Polished Wood (Cost: 5 Wood, +15 HP)</div>`;
+      } else if (train.upgradeLevel === 1) {
+        optionsHTML += `<div class="upgradeOption" onclick="upgradeToSteel()">Upgrade to Steel (Cost: 3 Steel & 3 Metal, +25 HP)</div>`;
+      }
+      optionsHTML += `<div class="upgradeOption" onclick="upgradeSpeed()">Increase Speed (Cost: 5 Metal, +0.5 Speed)</div>`;
+      if (!autoTurretInstalled) {
+        optionsHTML += `<div class="upgradeOption" onclick="installAutoTurret()">Install Auto-Turret (Cost: 3 Energy)</div>`;
+      }
+      document.getElementById("upgradeOptions").innerHTML = optionsHTML;
+    }
+    function upgradeToPolished() {
+      if (resources.wood >= 5) {
+        resources.wood -= 5;
+        train.upgradeLevel = 1;
+        train.hp += 15;
+        train.color = "#CD853F";
+        updateUpgradeMenu();
+      } else { alert("Not enough Wood!"); }
+    }
+    function upgradeToSteel() {
+      if (resources.steel >= 3 && resources.metal >= 3) {
+        resources.steel -= 3;
+        resources.metal -= 3;
+        train.upgradeLevel = 2;
+        train.hp += 25;
+        train.color = "#C0C0C0";
+        updateUpgradeMenu();
+      } else { alert("Not enough Steel or Metal!"); }
+    }
+    function upgradeSpeed() {
+      if (resources.metal >= 5) {
+        resources.metal -= 5;
+        train.speed += 0.5;
+        updateUpgradeMenu();
+      } else { alert("Not enough Metal!"); }
+    }
+    function installAutoTurret() {
+      if (resources.energy >= 3) {
+        resources.energy -= 3;
+        autoTurretInstalled = true;
+        updateUpgradeMenu();
+      } else { alert("Not enough Energy!"); }
+    }
+    document.getElementById("doneButton").addEventListener("click", () => {
+      document.getElementById("upgradeMenu").style.display = "none";
+      upgradeMenuOpen = false;
+      gamePaused = false;
+    });
+
+    function update() {
+      if (gamePaused) { requestAnimationFrame(update); return; }
+      let now = Date.now();
+      ctx.fillStyle = ((now / 1000) % 20) < 10 ? "#444" : "#111";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (now - lastWaveTime > 15000) {
+        wave++;
+        spawnEnemy();
+        lastWaveTime = now;
+      }
+
+      if (autoTurretInstalled && now - autoTurretLastTime > autoTurretCooldown) {
+        bullets.push({ x: train.x + 80, y: train.y + 15, radius: 5, speed: 7 });
+        autoTurretLastTime = now;
+      }
+
+      // WASD & Joystick movement
+      let moveX = 0, moveY = 0;
+      if (keys.w) moveY -= 1;
+      if (keys.s) moveY += 1;
+      if (keys.a) moveX -= 1;
+      if (keys.d) moveX += 1;
+      moveX += jsDelta.dx / 40;
+      moveY += jsDelta.dy / 40;
+      let mag = Math.hypot(moveX, moveY);
+      if (mag > 0) {
+        moveX /= mag;
+        moveY /= mag;
+        train.x += moveX * train.speed;
+        train.y += moveY * train.speed;
+        train.x = Math.max(0, Math.min(canvas.width - train.w, train.x));
+        train.y = Math.max(0, Math.min(canvas.height - train.h, train.y));
+      }
+
+      ctx.fillStyle = train.color;
+      ctx.fillRect(train.x, train.y, train.w, train.h);
+      drawHealthBar(train.x, train.y - 10, train.w, 5, train.hp / 100, "#0f0");
+
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        let b = bullets[i];
+        b.x += b.speed;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#ff0";
+        ctx.fill();
+        if (b.x > canvas.width) {
+          bullets.splice(i, 1);
+        } else {
+          for (let j = enemies.length - 1; j >= 0; j--) {
+            let e = enemies[j];
+            if (isCollidingRectCircle(e, b)) {
+              e.hp -= 20;
+              bullets.splice(i, 1);
+              if (e.hp <= 0) {
+                dropLoot(e.x, e.y, e.isBoss);
+                enemies.splice(j, 1);
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        let e = enemies[i];
+        e.x -= e.speed;
+        ctx.fillStyle = e.isBoss ? "#f00" : "#a00";
+        ctx.fillRect(e.x, e.y, e.w, e.h);
+        if (isCollidingRect(train, e)) {
+          let damage = e.isBoss ? 30 : 10;
+          train.hp -= Math.max(damage, 1);
+          enemies.splice(i, 1);
+        }
+      }
+
+      for (let i = loot.length - 1; i >= 0; i--) {
+        let item = loot[i];
+        if (now - item.spawnTime > 7000) {
+          loot.splice(i, 1);
+        } else {
+          if (isCollidingRect(train, { x: item.x, y: item.y, w: 20, h: 20 })) {
+            if (item.type === "wood") resources.wood++;
+            else if (item.type === "metal") resources.metal++;
+            else if (item.type === "steel") resources.steel++;
+            else if (item.type === "energy") resources.energy++;
+            loot.splice(i, 1);
+            continue;
+          }
+          ctx.save();
+          if (item.type === "wood") {
+            ctx.fillStyle = "#8B4513";
+          } else if (item.type === "metal") {
+            ctx.fillStyle = "#AAAAAA";
+          } else if (item.type === "steel" || item.type === "energy") {
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = "cyan";
+            ctx.fillStyle = item.type === "steel" ? "#C0C0C0" : "#0ff";
+          }
+          ctx.beginPath();
+          ctx.arc(item.x, item.y, 10, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      document.getElementById("hud").innerHTML =
+        `Wave: ${wave} | HP: ${Math.floor(train.hp)} | Ammo: ${train.ammo} | Resources - Wood: ${resources.wood}, Metal: ${resources.metal}, Steel: ${resources.steel}, Energy: ${resources.energy}`;
+
+      if (train.hp <= 0) {
+        ctx.fillStyle = "#000a";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "40px sans-serif";
+        ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+        return;
+      }
+
+      requestAnimationFrame(update);
+    }
+    update();
+  </script>
 </body>
 </html>
